@@ -16,9 +16,10 @@
 
 package com.jonatbergn.jacoco.internal
 
-import com.android.build.api.extension.ApplicationAndroidComponentsExtension
-import com.android.build.api.extension.LibraryAndroidComponentsExtension
-import com.android.build.api.variant.Variant
+import com.android.build.gradle.AppExtension
+import com.android.build.gradle.LibraryExtension
+import com.android.build.gradle.api.BaseVariant
+import com.android.build.gradle.internal.dsl.BaseAppModuleExtension
 import com.jonatbergn.jacoco.JacocoConfigPluginExtension
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.*
@@ -26,19 +27,36 @@ import org.gradle.testing.jacoco.plugins.JacocoPlugin
 import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
 import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.jvm
 
 internal object JacocoConfig {
 
     private val mainSourceDirs by lazy { sourceDirs("main") }
     private fun sourceDirs(name: String) = LanguageName.values().map { "src/$name/${it.value}" }
-    private fun Project.executionDataFile(fileName: String) = files("$buildDir/jacoco/${fileName}.exec")
 
     private fun Project.applyJacocoPlugin(ext: JacocoConfigPluginExtension) {
         plugins.apply(JacocoPlugin::class.java)
-        afterEvaluate {
-            extensions.configure<JacocoPluginExtension> {
-                toolVersion = ext.jacocoVersion
+
+    }
+
+    private fun Project.configureJacocoPluginJava(ext: JacocoConfigPluginExtension) {
+        extensions.configure<JacocoPluginExtension> {
+            toolVersion = ext.jacocoVersion
+        }
+    }
+
+    private fun Project.configureJacocoPluginAndroidApplication(ext: JacocoConfigPluginExtension) {
+        extensions.configure<BaseAppModuleExtension> {
+            jacoco {
+                version = ext.jacocoVersion
+            }
+        }
+    }
+
+    private fun Project.configureJacocoPluginAndroidLibrary(ext: JacocoConfigPluginExtension) {
+        extensions.configure<LibraryExtension> {
+            jacoco {
+                version = ext.jacocoVersion
             }
         }
     }
@@ -62,7 +80,7 @@ internal object JacocoConfig {
         classDirectories.setFrom(classDirs)
         additionalSourceDirs.setFrom(files(mainSourceDirs))
         sourceDirectories.setFrom(files(mainSourceDirs))
-        executionData.setFrom(executionDataFile(testTaskName))
+        executionData.setFrom("$buildDir/jacoco/${testTaskName}.exec")
     }
 
     private fun Project.configureJacocoReportTaskJvm(ext: JacocoConfigPluginExtension) {
@@ -77,23 +95,19 @@ internal object JacocoConfig {
 
     private fun Project.createJacocoReportTaskAndroid(
         ext: JacocoConfigPluginExtension,
-        variant: Variant
+        variant: BaseVariant
     ) {
         val productFlavor = variant.flavorName
-        val buildType = variant.buildType.orEmpty()
+        val buildType = variant.buildType.name
         val productName = variant.name
         val (sourceName, sourcePath) = if (productFlavor.isEmpty()) {
             buildType to buildType
         } else {
             productName to "$productFlavor/$buildType"
         }
-        val taskName = "jacocoTestReport${sourceName.capitalize()}"
-        val testTaskName = "test${sourceName.capitalize()}UnitTest"
-        tasks.create<JacocoReport>(taskName) {
+        val reportTask = tasks.create<JacocoReport>("jacocoTestReport${sourceName.capitalize()}") {
             group = "Reporting"
             description = "Generate Jacoco coverage reports after running $sourceName tests."
-            dependsOn(testTaskName)
-            tasks["check"].dependsOn(this)
             reports {
                 val destinationDir = "$buildDir/reports/jacoco/${sourceName}"
                 html.run {
@@ -124,19 +138,35 @@ internal object JacocoConfig {
             classDirectories.setFrom(classDirs)
             additionalSourceDirs.setFrom(files(sourceDirs))
             sourceDirectories.setFrom(files(sourceDirs))
-            executionData.setFrom(executionDataFile(testTaskName))
+            val testTaskName = "test${sourceName.capitalize()}UnitTest"
+            val instrumented = variant.buildType.isTestCoverageEnabled
+            val executionDataFiles = listOfNotNull(
+                fileTree("$buildDir/jacoco/")
+                    .matching { include("${testTaskName}.exec") },
+                fileTree("$buildDir/outputs/code_coverage/${sourceName}AndroidTest/connected/")
+                    .matching { include("*.ec") }
+                    .takeIf { instrumented }
+            )
+            executionData.setFrom(executionDataFiles)
+            val dependencies = listOfNotNull(
+                testTaskName,
+                "connected${sourceName.capitalize()}AndroidTest"
+                    .takeIf { instrumented }
+            )
+            dependsOn(dependencies)
         }
+        tasks["check"].dependsOn(reportTask)
     }
 
     private fun Project.createJacocoReportTasksAndroidApplication(ext: JacocoConfigPluginExtension) {
-        extensions.configure<ApplicationAndroidComponentsExtension> {
-            onVariants { createJacocoReportTaskAndroid(ext, it) }
+        extensions.configure<AppExtension> {
+            applicationVariants.forEach { createJacocoReportTaskAndroid(ext, it) }
         }
     }
 
     private fun Project.createJacocoReportTasksAndroidLibrary(ext: JacocoConfigPluginExtension) {
-        extensions.configure<LibraryAndroidComponentsExtension> {
-            onVariants { createJacocoReportTaskAndroid(ext, it) }
+        extensions.configure<LibraryExtension> {
+            libraryVariants.forEach { createJacocoReportTaskAndroid(ext, it) }
         }
     }
 
@@ -168,7 +198,7 @@ internal object JacocoConfig {
     private fun Project.hasJvmTarget() = extensions.findByType<KotlinMultiplatformExtension>()
         ?.targets
         .orEmpty()
-        .any { it.platformType == KotlinPlatformType.jvm }
+        .any { it.platformType == jvm }
 
     fun Project.applicable() = PluginId.values().run {
         if (none { hasPlugin(it) }) {
@@ -184,16 +214,31 @@ internal object JacocoConfig {
     }
 
     fun Project.configureJacoco(ext: JacocoConfigPluginExtension) {
-        applyJacocoPlugin(ext)
         when {
-            hasPlugin(PluginId.AndroidApplication) -> createJacocoReportTasksAndroidApplication(ext)
-            hasAndroidPlugin() -> createJacocoReportTasksAndroidLibrary(ext)
+            hasPlugin(PluginId.AndroidApplication) -> afterEvaluate {
+                applyJacocoPlugin(ext)
+                configureJacocoPluginJava(ext)
+                configureJacocoPluginAndroidApplication(ext)
+                createJacocoReportTasksAndroidApplication(ext)
+            }
+            hasAndroidPlugin() -> afterEvaluate {
+                applyJacocoPlugin(ext)
+                configureJacocoPluginJava(ext)
+                configureJacocoPluginAndroidLibrary(ext)
+                createJacocoReportTasksAndroidLibrary(ext)
+            }
         }
         when {
-            hasPlugin(PluginId.KotlinMultiplatform) -> afterEvaluate {
-                if (hasJvmTarget()) createJacocoReportTaskJvm(ext)
+            hasPlugin(PluginId.KotlinMultiplatform) -> {
+                if (hasJvmTarget()) {
+                    applyJacocoPlugin(ext)
+                    afterEvaluate { createJacocoReportTaskJvm(ext) }
+                }
             }
-            hasJavaPlugin() -> configureJacocoReportTaskJvm(ext)
+            hasJavaPlugin() -> {
+                applyJacocoPlugin(ext)
+                afterEvaluate { configureJacocoReportTaskJvm(ext) }
+            }
         }
     }
 }
