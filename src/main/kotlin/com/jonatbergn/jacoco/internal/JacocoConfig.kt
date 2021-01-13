@@ -229,15 +229,15 @@ internal object JacocoConfig {
             }
         }
         when {
-            hasPlugin(PluginId.KotlinMultiplatform) -> {
+            hasPlugin(PluginId.KotlinMultiplatform) -> afterEvaluate {
                 if (hasJvmTarget()) {
                     applyJacocoPlugin(ext)
-                    afterEvaluate { createJacocoReportTaskJvm(ext) }
+                    createJacocoReportTaskJvm(ext)
                 }
             }
-            hasJavaPlugin() -> {
+            hasJavaPlugin() -> afterEvaluate {
                 applyJacocoPlugin(ext)
-                afterEvaluate { configureJacocoReportTaskJvm(ext) }
+                configureJacocoReportTaskJvm(ext)
             }
         }
     }
