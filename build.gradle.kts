@@ -33,6 +33,7 @@ repositories {
 }
 pluginBundle {
     website = "${property("POM_URL")}"
+    vcsUrl = "${property("POM_SCM_URL")}"
     tags = setOf("jacoco", "android", "kotlin", "junit")
 }
 gradlePlugin {
@@ -40,6 +41,8 @@ gradlePlugin {
         create("JacocoConfig") {
             id = "com.jonatbergn.jacoco.jacoco-config"
             implementationClass = "com.jonatbergn.jacoco.JacocoConfigPlugin"
+            displayName = "${property("POM_NAME")}"
+            description = "${property("POM_DESCRIPTION")}"
         }
     }
 }
