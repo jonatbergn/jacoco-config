@@ -48,8 +48,8 @@ gradlePlugin {
 }
 dependencies {
     gradleApi()
-    compileOnly("com.android.tools.build:gradle:7.0.0-alpha04")
-    compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.21")
+    compileOnly("com.android.tools.build:gradle:7.0.0-alpha05")
+    compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.21-2")
 }
 group = "${property("GROUP")}"
 version = "${property("VERSION_NAME")}"
