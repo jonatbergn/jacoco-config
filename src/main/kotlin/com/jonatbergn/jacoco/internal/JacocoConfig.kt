@@ -20,7 +20,7 @@ import com.android.build.api.extension.ApplicationAndroidComponentsExtension
 import com.android.build.api.extension.LibraryAndroidComponentsExtension
 import com.android.build.gradle.LibraryExtension
 import com.android.build.gradle.internal.dsl.BaseAppModuleExtension
-import com.jonatbergn.jacoco.JacocoConfigPluginExtension
+import com.jonatbergn.jacoco.JacocoConfigExtension
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.*
 import org.gradle.testing.jacoco.plugins.JacocoPlugin
@@ -34,13 +34,13 @@ internal object JacocoConfig {
     private val mainSourceDirs by lazy { sourceDirs("main") }
     private fun sourceDirs(name: String) = LanguageName.values().map { "src/$name/${it.value}" }
 
-    private fun Project.configureJacocoPlugin(ext: JacocoConfigPluginExtension) {
+    private fun Project.configureJacocoPlugin(ext: JacocoConfigExtension) {
         extensions.configure<JacocoPluginExtension> {
             toolVersion = ext.jacocoVersion
         }
     }
 
-    private fun Project.configureJacocoPluginAndroidApplication(ext: JacocoConfigPluginExtension) {
+    private fun Project.configureJacocoPluginAndroidApplication(ext: JacocoConfigExtension) {
         extensions.configure<BaseAppModuleExtension> {
             jacoco {
                 version = ext.jacocoVersion
@@ -48,7 +48,7 @@ internal object JacocoConfig {
         }
     }
 
-    private fun Project.configureJacocoPluginAndroidLibrary(ext: JacocoConfigPluginExtension) {
+    private fun Project.configureJacocoPluginAndroidLibrary(ext: JacocoConfigExtension) {
         extensions.configure<LibraryExtension> {
             jacoco {
                 version = ext.jacocoVersion
@@ -57,7 +57,7 @@ internal object JacocoConfig {
     }
 
     private fun Project.configureJacocoReportTask(
-        ext: JacocoConfigPluginExtension,
+        ext: JacocoConfigExtension,
         testTaskName: String,
         reportTask: JacocoReport
     ) = reportTask.run {
@@ -78,18 +78,18 @@ internal object JacocoConfig {
         executionData.setFrom("$buildDir/jacoco/${testTaskName}.exec")
     }
 
-    private fun Project.configureJacocoReportTaskJvm(ext: JacocoConfigPluginExtension) {
+    private fun Project.configureJacocoReportTaskJvm(ext: JacocoConfigExtension) {
         tasks.withType<JacocoReport> { configureJacocoReportTask(ext, "test", this) }
     }
 
-    private fun Project.createJacocoReportTaskJvm(ext: JacocoConfigPluginExtension) {
+    private fun Project.createJacocoReportTaskJvm(ext: JacocoConfigExtension) {
         tasks.create<JacocoReport>("jacocoTestReport") {
             configureJacocoReportTask(ext, "jvmTest", this)
         }
     }
 
     private fun Project.createJacocoReportTaskAndroid(
-        ext: JacocoConfigPluginExtension,
+        ext: JacocoConfigExtension,
         buildType: String,
         productFlavor: String,
         productName: String
@@ -153,7 +153,7 @@ internal object JacocoConfig {
         tasks["check"].dependsOn(reportTask)
     }
 
-    private fun Project.createJacocoReportTasksAndroidApplication(ext: JacocoConfigPluginExtension) {
+    private fun Project.createJacocoReportTasksAndroidApplication(ext: JacocoConfigExtension) {
         extensions.configure<ApplicationAndroidComponentsExtension> {
             onVariants {
                 createJacocoReportTaskAndroid(ext, it.buildType.orEmpty(), it.flavorName, it.name)
@@ -161,7 +161,7 @@ internal object JacocoConfig {
         }
     }
 
-    private fun Project.createJacocoReportTasksAndroidLibrary(ext: JacocoConfigPluginExtension) {
+    private fun Project.createJacocoReportTasksAndroidLibrary(ext: JacocoConfigExtension) {
         extensions.configure<LibraryAndroidComponentsExtension> {
             onVariants {
                 createJacocoReportTaskAndroid(ext, it.buildType.orEmpty(), it.flavorName, it.name)
@@ -199,7 +199,7 @@ internal object JacocoConfig {
         .orEmpty()
         .any { it.platformType == jvm }
 
-    fun Project.configureJacoco(ext: JacocoConfigPluginExtension) {
+    fun Project.configureJacoco(ext: JacocoConfigExtension) {
         plugins.apply(JacocoPlugin::class.java)
         configureJacocoPlugin(ext)
         when {

@@ -16,8 +16,9 @@
 
 package com.jonatbergn.jacoco
 
-open class JacocoConfigPluginExtension {
+open class JacocoConfigExtension {
     var jacocoVersion = "0.8.6"
+    var ignore = listOf("")
     var excludes = listOf(
         "**/R.class",
         "**/R2.class",
