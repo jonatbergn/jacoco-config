@@ -16,9 +16,11 @@
 
 package com.jonatbergn.jacoco
 
+import java.io.File
+
 open class JacocoConfigExtension {
-    var jacocoVersion = "0.8.6"
-    var ignore = listOf("")
+    var jacocoVersion = "0.8.7"
+    var ignore: String.() -> Boolean = { false }
     var excludes = listOf(
         "**/R.class",
         "**/R2.class",
@@ -41,4 +43,5 @@ open class JacocoConfigExtension {
     var isXmlEnabled = true
     var isCsvEnabled = true
     var isHtmlEnabled = true
+    var reportDir: File.() -> File = { resolve("reports/jacoco") }
 }

@@ -21,14 +21,14 @@ buildscript {
     }
 }
 plugins {
-    `kotlin-dsl`
     `java-gradle-plugin`
-    id("com.gradle.plugin-publish") version "0.12.0"
-    id("org.jetbrains.dokka") version "1.4.20"
-    id("com.vanniktech.maven.publish") version "0.13.0"
+    `kotlin-dsl`
+    id("com.gradle.plugin-publish") version "0.15.0"
+    id("org.jetbrains.dokka") version "1.4.30"
+    id("com.vanniktech.maven.publish.base") version "0.15.1"
 }
 repositories {
-    jcenter()
+    mavenCentral()
     google()
 }
 pluginBundle {
@@ -48,8 +48,8 @@ gradlePlugin {
 }
 dependencies {
     gradleApi()
-    compileOnly("com.android.tools.build:gradle:7.0.0-alpha05")
-    compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.21-2")
+    compileOnly("com.android.tools.build:gradle:7.0.0-beta05")
+    compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:1.5.20")
 }
 group = "${property("GROUP")}"
 version = "${property("VERSION_NAME")}"
