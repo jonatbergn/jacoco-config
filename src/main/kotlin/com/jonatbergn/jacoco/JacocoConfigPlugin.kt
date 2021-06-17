@@ -16,20 +16,13 @@
 
 package com.jonatbergn.jacoco
 
-import com.jonatbergn.jacoco.internal.JacocoConfig.configureJacoco
+import com.jonatbergn.jacoco.internal.JacocoConfig
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.kotlin.dsl.create
 
 class JacocoConfigPlugin : Plugin<Project> {
-    override fun apply(target: Project) = target.run {
-        val ext = extensions.create<JacocoConfigExtension>("jacocoConfig")
-        subprojects {
-            afterEvaluate {
-                if (!ext.ignore.contains(name)) {
-                    configureJacoco(ext)
-                }
-            }
-        }
+
+    override fun apply(target: Project) {
+        JacocoConfig(target).configure()
     }
 }

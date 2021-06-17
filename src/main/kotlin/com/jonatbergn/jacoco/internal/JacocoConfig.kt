@@ -25,103 +25,113 @@ import org.gradle.api.Project
 import org.gradle.kotlin.dsl.*
 import org.gradle.testing.jacoco.plugins.JacocoPlugin
 import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
+import org.gradle.testing.jacoco.tasks.JacocoMerge
 import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.jvm
 
-internal object JacocoConfig {
+internal class JacocoConfig(private val rootProject: Project) {
 
+    internal companion object {
+        const val taskGroup = "Reporting"
+        const val taskNameMergeExec = "jacocoMerged"
+        const val taskNameMergeReport = "mergedReport"
+    }
+
+    private val ext by lazy { rootProject.extensions.create<JacocoConfigExtension>("jacocoConfig") }
     private val mainSourceDirs by lazy { sourceDirs("main") }
     private fun sourceDirs(name: String) = LanguageName.values().map { "src/$name/${it.value}" }
 
-    private fun Project.configureJacocoPlugin(ext: JacocoConfigExtension) {
-        extensions.configure<JacocoPluginExtension> {
-            toolVersion = ext.jacocoVersion
+    private fun JacocoReport.configureReportContainers() = reports {
+        val destinationDir = ext.reportDir(project.buildDir)
+        html.apply {
+            isEnabled = ext.isHtmlEnabled
+            destination = destinationDir
+        }
+        xml.apply {
+            isEnabled = ext.isXmlEnabled
+            destination = destinationDir.resolve("jacoco.xml")
+        }
+        csv.apply {
+            isEnabled = ext.isCsvEnabled
+            destination = destinationDir.resolve("jacoco.csv")
         }
     }
 
-    private fun Project.configureJacocoPluginAndroidApplication(ext: JacocoConfigExtension) {
-        extensions.configure<BaseAppModuleExtension> {
-            jacoco {
-                version = ext.jacocoVersion
-            }
-        }
+    private fun Project.configureJacocoPlugin() {
+        if (!plugins.hasPlugin(JacocoPlugin::class)) plugins.apply(JacocoPlugin::class.java)
+        extensions.configure<JacocoPluginExtension> { toolVersion = ext.jacocoVersion }
     }
 
-    private fun Project.configureJacocoPluginAndroidLibrary(ext: JacocoConfigExtension) {
-        extensions.configure<LibraryExtension> {
-            jacoco {
-                version = ext.jacocoVersion
-            }
+    private fun Project.configureJacocoPluginAndroidApplication() {
+        extensions.configure<BaseAppModuleExtension> { jacoco { version = ext.jacocoVersion } }
+    }
+
+    private fun Project.configureJacocoPluginAndroidLibrary() {
+        extensions.configure<LibraryExtension> { jacoco { version = ext.jacocoVersion } }
+    }
+
+    private fun JacocoReport.merge() = let {
+        rootProject.tasks.named<JacocoMerge>(taskNameMergeExec) {
+            executionData += it.executionData
+        }
+        rootProject.tasks.named<JacocoReport>(taskNameMergeReport) {
+            classDirectories.from(it.classDirectories.from)
+            additionalSourceDirs.from(it.additionalClassDirs.from)
+            sourceDirectories.from(it.sourceDirectories.from)
         }
     }
 
     private fun Project.configureJacocoReportTask(
-        ext: JacocoConfigExtension,
         testTaskName: String,
         reportTask: JacocoReport
-    ) = reportTask.run {
-        group = "Reporting"
+    ) = reportTask.apply {
+        group = taskGroup
         description = "Generate Jacoco coverage reports."
-        dependsOn(testTaskName)
-        tasks["check"].dependsOn(this)
-        reports {
-            xml.isEnabled = ext.isXmlEnabled
-            csv.isEnabled = ext.isCsvEnabled
-            html.isEnabled = ext.isHtmlEnabled
-        }
+        configureReportContainers()
         val classPaths = listOf("**/classes/**/main/**")
         val classDirs = fileTree(buildDir) { setIncludes(classPaths); setExcludes(ext.excludes) }
         classDirectories.setFrom(classDirs)
         additionalSourceDirs.setFrom(files(mainSourceDirs))
         sourceDirectories.setFrom(files(mainSourceDirs))
         executionData.setFrom("$buildDir/jacoco/${testTaskName}.exec")
+        dependsOn(testTaskName)
+    }.merge()
+
+    private fun Project.configureJacocoReportTaskJvm() {
+        tasks.withType<JacocoReport> { configureJacocoReportTask("test", this) }
     }
 
-    private fun Project.configureJacocoReportTaskJvm(ext: JacocoConfigExtension) {
-        tasks.withType<JacocoReport> { configureJacocoReportTask(ext, "test", this) }
-    }
-
-    private fun Project.createJacocoReportTaskJvm(ext: JacocoConfigExtension) {
-        tasks.create<JacocoReport>("jacocoTestReport") {
-            configureJacocoReportTask(ext, "jvmTest", this)
-        }
+    private fun Project.createJacocoReportTaskJvm() {
+        tasks.create<JacocoReport>("jacocoTestReport") { configureJacocoReportTask("jvmTest", this) }
     }
 
     private fun Project.createJacocoReportTaskAndroid(
-        ext: JacocoConfigExtension,
         buildType: String,
         productFlavor: String,
-        productName: String
+        buildVariant: String
     ) {
+        if (buildVariant in ext.androidReportBuildVariants) {
+            logger.warn("Adding report task for '$buildVariant'.")
+        } else {
+            logger.warn("Not adding report task for'$buildVariant'.")
+            return
+        }
         val (sourceName, sourcePath) = if (productFlavor.isEmpty()) {
             buildType to buildType
         } else {
-            productName to "$productFlavor/$buildType"
+            buildVariant to "$productFlavor/$buildType"
         }
         val reportTask = tasks.create<JacocoReport>("jacocoTestReport${sourceName.capitalize()}") {
             group = "Reporting"
             description = "Generate Jacoco coverage reports after running $sourceName tests."
-            reports {
-                val destinationDir = "$buildDir/reports/jacoco/${sourceName}"
-                html.run {
-                    isEnabled = ext.isHtmlEnabled
-                    destination = file(destinationDir)
-                }
-                xml.run {
-                    isEnabled = ext.isXmlEnabled
-                    destination = file("$destinationDir/jacoco.xml")
-                }
-                csv.run {
-                    isEnabled = ext.isCsvEnabled
-                    destination = file("$destinationDir/jacoco.csv")
-                }
-            }
+            configureReportContainers()
             val classPaths = listOfNotNull(
-                "**/intermediates/classes/${sourcePath}/**",
+                //todo this seems to be outdated or java specific
+                //"**/intermediates/classes/${sourcePath}/**",
                 "**/tmp/kotlin-classes/${sourcePath}/**"
                     .takeIf { hasKotlinPlugin() },
-                "**/tmp/kotlin-classes/$productName/**"
+                "**/tmp/kotlin-classes/$buildVariant/**"
                     .takeIf { hasKotlinPlugin() }
                     .takeUnless { productFlavor.isEmpty() }
             )
@@ -149,22 +159,23 @@ internal object JacocoConfig {
                     ?.name
             )
             dependsOn(dependencies)
-        }
+        }.merge()
+        //todo
         tasks["check"].dependsOn(reportTask)
     }
 
-    private fun Project.createJacocoReportTasksAndroidApplication(ext: JacocoConfigExtension) {
+    private fun Project.createJacocoReportTasksAndroidApplication() {
         extensions.configure<ApplicationAndroidComponentsExtension> {
             onVariants {
-                createJacocoReportTaskAndroid(ext, it.buildType.orEmpty(), it.flavorName, it.name)
+                createJacocoReportTaskAndroid(it.buildType.orEmpty(), it.flavorName.orEmpty(), it.name)
             }
         }
     }
 
-    private fun Project.createJacocoReportTasksAndroidLibrary(ext: JacocoConfigExtension) {
+    private fun Project.createJacocoReportTasksAndroidLibrary() {
         extensions.configure<LibraryAndroidComponentsExtension> {
             onVariants {
-                createJacocoReportTaskAndroid(ext, it.buildType.orEmpty(), it.flavorName, it.name)
+                createJacocoReportTaskAndroid(it.buildType.orEmpty(), it.flavorName.orEmpty(), it.name)
             }
         }
     }
@@ -199,25 +210,49 @@ internal object JacocoConfig {
         .orEmpty()
         .any { it.platformType == jvm }
 
-    fun Project.configureJacoco(ext: JacocoConfigExtension) {
-        plugins.apply(JacocoPlugin::class.java)
-        configureJacocoPlugin(ext)
-        when {
-            hasPlugin(PluginId.AndroidApplication) -> {
-                configureJacocoPluginAndroidApplication(ext)
-                createJacocoReportTasksAndroidApplication(ext)
-            }
-            hasAndroidPlugin() -> {
-                configureJacocoPluginAndroidLibrary(ext)
-                createJacocoReportTasksAndroidLibrary(ext)
+    fun configure() = rootProject.run {
+        configureJacocoPlugin()
+        subprojects {
+            afterEvaluate {
+                if (!ext.ignore(name)) {
+                    configureJacocoPlugin()
+                    when {
+                        hasPlugin(PluginId.AndroidApplication) -> {
+                            configureJacocoPluginAndroidApplication()
+                            createJacocoReportTasksAndroidApplication()
+                        }
+                        hasAndroidPlugin() -> {
+                            configureJacocoPluginAndroidLibrary()
+                            createJacocoReportTasksAndroidLibrary()
+                        }
+                    }
+                    when {
+                        hasPlugin(PluginId.KotlinMultiplatform) -> {
+                            if (hasJvmTarget()) createJacocoReportTaskJvm()
+                        }
+                        hasJavaPlugin() -> {
+                            configureJacocoReportTaskJvm()
+                        }
+                    }
+                }
             }
         }
-        when {
-            hasPlugin(PluginId.KotlinMultiplatform) -> {
-                if (hasJvmTarget()) createJacocoReportTaskJvm(ext)
+    }
+
+    init {
+        rootProject.run {
+            val mergedDestination = file("$buildDir/jacoco/merged.exec")
+            tasks.register<JacocoMerge>(taskNameMergeExec) {
+                group = taskGroup
+                description = "Merges jacoco exec files."
+                executionData = files()
+                doFirst { executionData = executionData.filter { it.exists() } }
             }
-            hasJavaPlugin() -> {
-                configureJacocoReportTaskJvm(ext)
+            tasks.register<JacocoReport>(taskNameMergeReport) {
+                group = taskGroup
+                description = "Generate Jacoco coverage report."
+                configureReportContainers()
+                executionData.setFrom(file("$buildDir/jacoco/$taskNameMergeExec.exec"))
             }
         }
     }
