@@ -28,12 +28,10 @@ import org.gradle.testing.jacoco.plugins.JacocoPlugin
 import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
 import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 
 internal class JacocoConfig(private val rootProject: Project) {
 
     private val ext by lazy { rootProject.extensions.create<JacocoConfigExtension>("jacocoConfig") }
-    private val mainSourceDir = sourceDir("main")
     private fun sourceDir(name: String) = "src/$name/kotlin"
 
     private fun JacocoReport.configureReportContainer() = reports {
@@ -69,19 +67,22 @@ internal class JacocoConfig(private val rootProject: Project) {
         }
     }
 
-    private fun Project.createJacocoReportTaskJvm() {
+    private fun Project.createJacocoReportTaskJvm(extension: KotlinMultiplatformExtension) {
         val reportTask = tasks.create<JacocoReport>("jacocoTestReport") {
             group = "Reporting"
             description = "Generate Jacoco coverage reports."
             configureReportContainer()
             val testTaskName = "jvmTest"
-            val classPaths = listOf("**/classes/**/main/**")
             val classDirs = fileTree(buildDir)
-                .setIncludes(classPaths)
+                .setIncludes(listOf("**/classes/**/main/**"))
                 .setExcludes(ext.excludes)
+            val sourceDirs = extension.sourceSets
+                .flatMap { it.kotlin.srcDirTrees }
+                .map { it.dir.toURI() }
+                .map { buildDir.toURI().relativize(it) }
             classDirectories.setFrom(classDirs)
-            additionalSourceDirs.setFrom(files(mainSourceDir))
-            sourceDirectories.setFrom(files(mainSourceDir))
+            sourceDirectories.setFrom(sourceDirs)
+            additionalSourceDirs.setFrom(sourceDirs)
             executionData.setFrom("$buildDir/jacoco/${testTaskName}.exec")
             dependsOn(tasks.findByName(testTaskName))
         }
@@ -112,13 +113,13 @@ internal class JacocoConfig(private val rootProject: Project) {
             }
             val flavorSourceDirs = sourceDir(productFlavor)
             val buildTypeSourceDirs = sourceDir(buildType).takeUnless { productFlavor.isEmpty() }.orEmpty()
-            val sourceDirs = flavorSourceDirs + buildTypeSourceDirs + mainSourceDir
+            val sourceDirs = flavorSourceDirs + buildTypeSourceDirs
             classDirectories.setFrom(classDirs)
             additionalSourceDirs.setFrom(files(sourceDirs))
             sourceDirectories.setFrom(files(sourceDirs))
             val testTaskName = "test${sourceName.capitalize()}UnitTest"
             val executionDataFiles = fileTree("$buildDir/jacoco/")
-                    .matching { include("${testTaskName}.exec") }
+                .matching { include("${testTaskName}.exec") }
             executionData.setFrom(executionDataFiles)
             dependsOn(testTaskName)
         }
@@ -165,14 +166,8 @@ internal class JacocoConfig(private val rootProject: Project) {
                             createJacocoReportTasksAndroidLibrary()
                         }
                     }
-                    if (
-                        extensions.findByType<KotlinMultiplatformExtension>()
-                            ?.targets
-                            .orEmpty()
-                            .any { it is KotlinJvmTarget }
-                    ) {
-                        createJacocoReportTaskJvm()
-                    }
+                    extensions.findByType<KotlinMultiplatformExtension>()
+                        ?.let { createJacocoReportTaskJvm(it) }
                 }
             }
         }
