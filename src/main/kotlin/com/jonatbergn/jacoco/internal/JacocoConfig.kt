@@ -79,7 +79,9 @@ internal class JacocoConfig(private val rootProject: Project) {
                 .setExcludes(ext.excludes)
             val sourceDirs = extension.sourceSets
                 .flatMap { it.kotlin.srcDirTrees }
-                .map { it.dir.toURI() }
+                .map { it.dir }
+                .filter { it.exists() }
+                .map { it.toURI() }
                 .map { buildDir.toURI().relativize(it) }
             classDirectories.setFrom(classDirs)
             sourceDirectories.setFrom(sourceDirs)
