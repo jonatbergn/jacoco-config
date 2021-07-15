@@ -68,11 +68,12 @@ internal class JacocoConfig(private val rootProject: Project) {
     }
 
     private fun Project.createJacocoReportTaskJvm(extension: KotlinMultiplatformExtension) {
+        val testTaskName = "jvmTest"
+        val testTask = tasks.findByName(testTaskName) ?: return
         val reportTask = tasks.create<JacocoReport>("jacocoTestReport") {
             group = "Reporting"
             description = "Generate Jacoco coverage reports."
             configureReportContainer()
-            val testTaskName = "jvmTest"
             val classDirs = fileTree(buildDir)
                 .setIncludes(listOf("**/classes/**/main/**"))
                 .setExcludes(ext.excludes)
@@ -84,7 +85,7 @@ internal class JacocoConfig(private val rootProject: Project) {
             sourceDirectories.setFrom(sourceDirs)
             additionalSourceDirs.setFrom(sourceDirs)
             executionData.setFrom("$buildDir/jacoco/${testTaskName}.exec")
-            dependsOn(tasks.findByName(testTaskName))
+            dependsOn(testTask)
         }
         tasks["check"].dependsOn(reportTask)
     }
