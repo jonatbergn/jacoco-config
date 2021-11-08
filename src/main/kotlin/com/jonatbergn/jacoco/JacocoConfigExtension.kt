@@ -17,11 +17,15 @@
 package com.jonatbergn.jacoco
 
 import java.io.File
+import org.gradle.api.Project
 
-open class JacocoConfigExtension {
-    var jacocoVersion = "0.8.7"
-    var ignore: String.() -> Boolean = { false }
-    var excludes = listOf(
+open class JacocoConfigExtension(
+    val project: Project,
+) {
+    val jacocoVersion: String = project.findProperty("jacocoConfig.version")
+        ?.let { it as? String }
+        ?: "0.8.7"
+    var excludes: List<String> = listOf(
         "**/R.class",
         "**/R2.class",
         "**/R\$*.class",
@@ -40,8 +44,7 @@ open class JacocoConfigExtension {
         "**/*\$StateSaver.*",
         "**/*AutoValue_*.*"
     )
-    var isXmlEnabled = true
-    var isCsvEnabled = true
-    var isHtmlEnabled = true
-    var reportDir: File.() -> File = { resolve("reports/jacoco") }
+    var isXmlEnabled: Boolean = !project.hasProperty("jacocoConfig.xml.disabled")
+    var isCsvEnabled: Boolean = !project.hasProperty("jacocoConfig.csv.disabled")
+    var isHtmlEnabled: Boolean = !project.hasProperty("jacocoConfig.html.disabled")
 }
