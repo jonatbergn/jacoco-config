@@ -16,7 +16,7 @@
 
 package com.jonatbergn.jacoco
 
-import java.io.File
+import com.android.build.api.variant.ComponentIdentity
 import org.gradle.api.Project
 
 open class JacocoConfigExtension(
@@ -47,4 +47,11 @@ open class JacocoConfigExtension(
     var isXmlEnabled: Boolean = !project.hasProperty("jacocoConfig.xml.disabled")
     var isCsvEnabled: Boolean = !project.hasProperty("jacocoConfig.csv.disabled")
     var isHtmlEnabled: Boolean = !project.hasProperty("jacocoConfig.html.disabled")
+
+    fun defaultReportVariant(block: ComponentIdentity.() -> Boolean) {
+        this.defaultReportVariant = block
+    }
+    var defaultReportVariant: ComponentIdentity.() -> Boolean = {
+        buildType == "debug" && productFlavors.isEmpty()
+    }
 }
