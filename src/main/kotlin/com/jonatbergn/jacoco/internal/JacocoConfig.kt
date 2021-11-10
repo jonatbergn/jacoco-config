@@ -24,8 +24,12 @@ import com.android.build.api.variant.DynamicFeatureAndroidComponentsExtension
 import com.android.build.api.variant.LibraryAndroidComponentsExtension
 import com.android.build.gradle.LibraryExtension
 import com.jonatbergn.jacoco.JacocoConfigExtension
+import java.io.File
 import org.gradle.api.Project
+import org.gradle.api.file.FileCollection
+import org.gradle.api.file.FileTree
 import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.api.tasks.util.PatternFilterable
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.findByType
@@ -43,8 +47,10 @@ internal class JacocoConfig(
     private val ext: JacocoConfigExtension,
 ) {
 
-    private fun JacocoReport.configureReportContainer() = reports {
-        val destinationDir = project.buildDir.resolve("reports/jacoco")
+    private fun Project.configureReportContainer(
+        task: JacocoReport,
+    ) = task.reports {
+        val destinationDir = buildDir.resolve("reports/jacoco")
         html.apply {
             required.set(ext.isHtmlEnabled)
             outputLocation.set(destinationDir)
@@ -82,45 +88,81 @@ internal class JacocoConfig(
         }
     }
 
+    private fun JacocoReport.addTestDataAndDirs(
+        execData: FileTree,
+        classDirs: PatternFilterable,
+        sourceDirs: List<File>,
+        dependsOn: Any,
+        classPath: FileCollection? = null,
+    ) {
+        classDirectories.setFrom(classDirectories + classDirs)
+        sourceDirectories.setFrom(sourceDirectories + sourceDirs)
+        executionData.setFrom(executionData + execData)
+        dependsOn(dependsOn)
+        if(classPath != null) jacocoClasspath = classPath
+    }
+
+    private fun Project.configureReport(
+        task: JacocoReport,
+        addToRootTask: Boolean,
+        classDirs: PatternFilterable,
+        sourceDirs: List<File>,
+        testTaskName: String,
+    ) {
+        val execData = fileTree("$buildDir/jacoco/").matching { include("${testTaskName}.exec") }
+        task.addTestDataAndDirs(
+            execData = execData,
+            classDirs = classDirs,
+            sourceDirs = sourceDirs,
+            dependsOn = testTaskName
+        )
+        if (!addToRootTask) return
+        rootReportTask.addTestDataAndDirs(
+            execData = execData,
+            classDirs = classDirs,
+            sourceDirs = sourceDirs,
+            dependsOn = task,
+            classPath = task.jacocoClasspath,
+        )
+    }
+
     private fun Project.createJacocoReportTaskJvm(
         extension: KotlinMultiplatformExtension,
     ) {
         val testTaskName = "jvmTest"
-        val testTask = tasks.findByName(testTaskName)
         val reportTask = tasks.create<JacocoReport>("jacocoTestReportJvm") {
             group = reportTaskGroup
             description = "Generate Jacoco coverage reports for after running jvm tests."
-            configureReportContainer()
-            val classDirs = fileTree(buildDir)
-                .setIncludes(listOf("**/classes/**/main/**"))
-                .setExcludes(ext.excludes)
-            val sourceDirs = extension.sourceSets.flatMap { it.kotlin.srcDirs }
-            classDirectories.setFrom(classDirs)
-            sourceDirectories.setFrom(sourceDirs)
-            executionData.setFrom("$buildDir/jacoco/${testTaskName}.exec")
-            dependsOn(testTask)
+            configureReportContainer(this)
+            configureReport(
+                task = this,
+                addToRootTask = true,
+                classDirs = fileTree(buildDir)
+                    .setIncludes(listOf("**/classes/**/main/**"))
+                    .setExcludes(ext.excludes),
+                sourceDirs = extension.sourceSets.flatMap { it.kotlin.srcDirs },
+                testTaskName = testTaskName
+            )
         }
-        defaultReportTask.dependsOn(reportTask)
         tasks["check"].dependsOn(reportTask)
     }
 
     private fun Project.configureJacocoReportTaskJvm() {
         val testTaskName = "test"
-        val testTask = tasks.findByName(testTaskName)
         val reportTask = tasks.create<JacocoReport>("jacocoTestReportJvm") {
             group = reportTaskGroup
             description = "Generate Jacoco coverage reports for after running jvm tests."
-            configureReportContainer()
-            val classDirs = fileTree(buildDir)
-                .setIncludes(listOf("**/classes/**/main/**"))
-                .setExcludes(ext.excludes)
-            val sourceDirs = javaSourceDirs()
-            classDirectories.setFrom(classDirs)
-            sourceDirectories.setFrom(sourceDirs)
-            executionData.setFrom("$buildDir/jacoco/${testTaskName}.exec")
-            dependsOn(testTask)
+            configureReportContainer(this)
+            configureReport(
+                task = this,
+                addToRootTask = true,
+                classDirs = fileTree(buildDir)
+                    .setIncludes(listOf("**/classes/**/main/**"))
+                    .setExcludes(ext.excludes),
+                sourceDirs = javaSourceDirs(),
+                testTaskName = testTaskName,
+            )
         }
-        defaultReportTask.dependsOn(reportTask)
         tasks["check"].dependsOn(reportTask)
     }
 
@@ -133,26 +175,23 @@ internal class JacocoConfig(
         val reportTask = tasks.create<JacocoReport>("jacocoTestReport${buildVariant.capitalize()}") {
             group = reportTaskGroup
             description = "Generate Jacoco coverage reports after running $buildVariant tests."
-            configureReportContainer()
-            val classDirs = fileTree(buildDir) {
-                setIncludes(listOf("**/tmp/kotlin-classes/$buildVariant/**"))
-                setExcludes(ext.excludes)
-            }
-            val sourceDirs = listOfNotNull(
-                androidSourceDirs("main"),
-                androidSourceDirs(buildVariant),
-                productFlavor?.let { androidSourceDirs(it) },
-                buildType?.let { androidSourceDirs(it) }
-            ).flatten().toSet()
-            classDirectories.setFrom(classDirs)
-            sourceDirectories.setFrom(files(sourceDirs))
+            configureReportContainer(this)
             val testTaskName = "test${buildVariant.capitalize()}UnitTest"
-            val executionDataFiles = fileTree("$buildDir/jacoco/")
-                .matching { include("${testTaskName}.exec") }
-            executionData.setFrom(executionDataFiles)
-            dependsOn(testTaskName)
+            configureReport(
+                task = this,
+                addToRootTask = ext.rootReportVariant(identity),
+                classDirs = fileTree(buildDir)
+                    .setIncludes(listOf("**/tmp/kotlin-classes/$buildVariant/**"))
+                    .setExcludes(ext.excludes),
+                sourceDirs = listOfNotNull(
+                    androidSourceDirs("main"),
+                    androidSourceDirs(buildVariant),
+                    productFlavor?.let { androidSourceDirs(it) },
+                    buildType?.let { androidSourceDirs(it) }
+                ).flatten(),
+                testTaskName = testTaskName,
+            )
         }
-        if (ext.defaultReportVariant(identity)) defaultReportTask.dependsOn(reportTask)
         tasks["check"].dependsOn(reportTask)
     }
 
@@ -199,19 +238,21 @@ internal class JacocoConfig(
         }
     }
 
+    private val rootReportTask = with(ext.project.rootProject) {
+        tasks.findByName(rootReportTaskName)?.let { it as JacocoReport }
+            ?: tasks.create<JacocoReport>(rootReportTaskName) {
+                group = reportTaskGroup
+                description = "Generate Jacoco coverage reports for default variants."
+                configureReportContainer(this)
+            }
+    }
+
     private companion object {
         const val reportTaskGroup = "Reporting"
-        const val defaultReportTaskName = "jacocoReportDefault"
-        val Project.defaultReportTask
-            get() = rootProject.tasks.run {
-                findByName(defaultReportTaskName) ?: create(defaultReportTaskName) {
-                    group = reportTaskGroup
-                    description = "Generate Jacoco coverage reports for default variants."
-                }
-            }
+        const val rootReportTaskName = "jacocoRootReport"
         val languages = listOf("java", "kotlin")
-        fun androidSourceDirs(variant: String) = languages.map { language -> "src/$variant/$language" }
-        fun javaSourceDirs() = languages.map { language -> "src/main/$language" }
+        fun Project.androidSourceDirs(variant: String) = languages.map { file("src/$variant/$it") }
+        fun Project.javaSourceDirs() = languages.map { file("src/main/$it") }
         fun KotlinMultiplatformExtension.hasPlatformType(type: KotlinPlatformType) =
             targets.any { it.platformType == type }
     }

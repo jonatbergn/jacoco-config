@@ -18,40 +18,46 @@ package com.jonatbergn.jacoco
 
 import com.android.build.api.variant.ComponentIdentity
 import org.gradle.api.Project
+import org.gradle.internal.Cast.uncheckedCast
+import org.gradle.kotlin.dsl.extra
 
 open class JacocoConfigExtension(
     val project: Project,
 ) {
-    val jacocoVersion: String = project.findProperty("jacocoConfig.version")
-        ?.let { it as? String }
-        ?: "0.8.7"
-    var excludes: List<String> = listOf(
-        "**/R.class",
-        "**/R2.class",
-        "**/R\$*.class",
-        "**/R2\$*.class",
-        "**/*\$ViewInjector*.*",
-        "**/*\$ViewBinder*.*",
-        "**/*_ViewBinding*.*",
-        "**/BuildConfig.*",
-        "**/Manifest*.*",
-        "**/*Dagger*.*",
-        "**/*MembersInjector*.*",
-        "**/*_Provide*Factory*.*",
-        "**/*_Factory*.*",
-        "**/*\$JsonObjectMapper.*",
-        "**/*\$Icepick.*",
-        "**/*\$StateSaver.*",
-        "**/*AutoValue_*.*"
-    )
-    var isXmlEnabled: Boolean = !project.hasProperty("jacocoConfig.xml.disabled")
-    var isCsvEnabled: Boolean = !project.hasProperty("jacocoConfig.csv.disabled")
-    var isHtmlEnabled: Boolean = !project.hasProperty("jacocoConfig.html.disabled")
-
-    fun defaultReportVariant(block: ComponentIdentity.() -> Boolean) {
-        this.defaultReportVariant = block
+    val jacocoVersion = with(project) {
+        if (hasProperty(PROPERTY_VERSION)) {
+            requireNotNull(uncheckedCast(property(PROPERTY_VERSION)))
+        } else {
+            DEFAULT_VERSION
+        }
     }
-    var defaultReportVariant: ComponentIdentity.() -> Boolean = {
+    private val jacocoGlobalExcludes = with(project.rootProject.extra) {
+        if (has(EXTRA_EXCLUDES)) {
+            requireNotNull(uncheckedCast(get(EXTRA_EXCLUDES)))
+        } else {
+            DEFAULT_EXCLUDES
+        }
+    }
+    var excludes: List<String> = jacocoGlobalExcludes
+    var isXmlEnabled: Boolean = !project.hasProperty(PROPERTY_XML_DISABLED)
+    var isCsvEnabled: Boolean = !project.hasProperty(PROPERTY_CSV_DISABLED)
+    var isHtmlEnabled: Boolean = !project.hasProperty(PROPERTY_HTML_DISABLED)
+
+    fun rootReportVariant(block: ComponentIdentity.() -> Boolean) {
+        this.rootReportVariant = block
+    }
+
+    internal var rootReportVariant: ComponentIdentity.() -> Boolean = {
         buildType == "debug" && productFlavors.isEmpty()
+    }
+
+    companion object {
+        const val EXTRA_EXCLUDES = "jacocoConfig.globalExcludes"
+        const val PROPERTY_VERSION = "jacocoConfig.version"
+        const val PROPERTY_XML_DISABLED = "jacocoConfig.xml.disabled"
+        const val PROPERTY_CSV_DISABLED = "jacocoConfig.csv.disabled"
+        const val PROPERTY_HTML_DISABLED = "jacocoConfig.html.disabled"
+        const val DEFAULT_VERSION = "0.8.7"
+        val DEFAULT_EXCLUDES = emptyList<String>()
     }
 }
