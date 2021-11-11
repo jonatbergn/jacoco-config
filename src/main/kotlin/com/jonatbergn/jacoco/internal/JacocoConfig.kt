@@ -99,7 +99,7 @@ internal class JacocoConfig(
         sourceDirectories.setFrom(sourceDirectories + sourceDirs)
         executionData.setFrom(executionData + execData)
         dependsOn(dependsOn)
-        if(classPath != null) jacocoClasspath = classPath
+        if (classPath != null) jacocoClasspath = classPath
     }
 
     private fun Project.configureReport(
@@ -214,26 +214,33 @@ internal class JacocoConfig(
     }
 
     fun configure() = with(ext.project) {
-        configureJacocoPlugin()
         when {
             extensions.findByType<ApplicationExtension>() != null -> {
+                configureJacocoPlugin()
                 configureJacocoPluginAndroidApplication()
                 createJacocoReportTasksAndroidApplication()
             }
             extensions.findByType<LibraryExtension>() != null -> {
+                configureJacocoPlugin()
                 configureJacocoPluginAndroidLibrary()
                 createJacocoReportTasksAndroidLibrary()
             }
             extensions.findByType<DynamicFeatureExtension>() != null -> {
+                configureJacocoPlugin()
                 configureJacocoPluginAndroidFeature()
                 createJacocoReportTasksAndroidFeature()
             }
             else -> afterEvaluate {
                 extensions.findByType<KotlinMultiplatformExtension>()
                     ?.takeIf { it.hasPlatformType(jvm) }
-                    ?.let { createJacocoReportTaskJvm(it) }
-                    ?: extensions.findByType<JavaPluginExtension>()
-                        ?.let { configureJacocoReportTaskJvm() }
+                    ?.let {
+                        configureJacocoPlugin()
+                        createJacocoReportTaskJvm(it)
+                    } ?: extensions.findByType<JavaPluginExtension>()
+                    ?.let {
+                        configureJacocoPlugin()
+                        configureJacocoReportTaskJvm()
+                    }
             }
         }
     }
