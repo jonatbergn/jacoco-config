@@ -57,7 +57,7 @@ open class JacocoConfigExtension(
         const val PROPERTY_XML_DISABLED = "jacocoConfig.xml.disabled"
         const val PROPERTY_CSV_DISABLED = "jacocoConfig.csv.disabled"
         const val PROPERTY_HTML_DISABLED = "jacocoConfig.html.disabled"
-        const val DEFAULT_VERSION = "0.8.7"
+        const val DEFAULT_VERSION = "0.8.8"
         val DEFAULT_EXCLUDES = emptyList<String>()
     }
 }
